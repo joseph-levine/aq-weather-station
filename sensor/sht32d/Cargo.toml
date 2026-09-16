@@ -1,0 +1,9 @@
+[package]
+name = "sht32d"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+embedded-hal = { version = "1.0.0" }
+crc = { version = "3.4.0" }
+spin_sleep = { version = "1.3.3" }
