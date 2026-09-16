@@ -1,19 +1,8 @@
+use crc::{CRC_8_NRSC_5, Crc};
+use embedded_hal::i2c::I2c;
 use std::thread::sleep;
 use std::time::Duration;
-use crc::{Algorithm, CRC_8_NRSC_5, Crc};
-use embedded_hal::i2c::I2c;
-
-const READSERIALNBR: u16 = 0x3780;
-const READSTATUS: u16 = 0xF32D;
-const CLEARSTATUS: u16 = 0x3041;
-const HEATER_ENABLE: u16 = 0x306D;
-const HEATER_DISABLE: u16 = 0x3066;
-const SOFTRESET: u16 = 0x30A2;
-const NOSLEEP: u16 = 0x303E;
-const PERIODIC_FETCH: u16 = 0xE000;
-const PERIODIC_BREAK: u16 = 0x3093;
-
-const CRC_ALGO: Algorithm<u8> = CRC_8_NRSC_5;
+use thiserror::Error;
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
@@ -53,19 +42,18 @@ pub enum Repeatability {
 
 impl Repeatability {
     pub fn delay(&self) -> Duration {
-        Duration::from_millis(
-            match self {
-                Repeatability::Low => 4,
-                Repeatability::Medium => 6,
-                Repeatability::High => 15
-            }
-        )
+        Duration::from_millis(match self {
+            Repeatability::Low => 4,
+            Repeatability::Medium => 6,
+            Repeatability::High => 15,
+        })
     }
 }
 
+#[derive(Debug)]
 pub struct Measurement {
-    pub temperature: i32,
-    pub humidity: f32,
+    pub temperature: f64,
+    pub humidity: f64,
 }
 
 enum Command {
@@ -102,7 +90,9 @@ impl Command {
             Command::NoSleep => &[0x30, 0x3E],
             Command::PeriodicFetch(per_sec, repeat) => match (per_sec, repeat) {
                 (MeasurementsPerSecond::OneHalf, Repeatability::Low) => &[0xE0, 0x00, 0x20, 0x2F],
-                (MeasurementsPerSecond::OneHalf, Repeatability::Medium) => &[0xE0, 0x00, 0x20, 0x24],
+                (MeasurementsPerSecond::OneHalf, Repeatability::Medium) => {
+                    &[0xE0, 0x00, 0x20, 0x24]
+                }
                 (MeasurementsPerSecond::OneHalf, Repeatability::High) => &[0xE0, 0x00, 0x20, 0x32],
                 (MeasurementsPerSecond::One, Repeatability::Low) => &[0xE0, 0x00, 0x21, 0x2D],
                 (MeasurementsPerSecond::One, Repeatability::Medium) => &[0xE0, 0x00, 0x21, 0x26],
@@ -124,6 +114,17 @@ impl Command {
     }
 }
 
+#[derive(Error, Debug)]
+pub enum Sht32dError<E>
+where
+    E: embedded_hal::i2c::Error,
+{
+    #[error(transparent)]
+    I2C(#[from] E),
+    #[error("Invalid checksum")]
+    InvalidChecksum,
+}
+
 impl<I> Sht32d<I>
 where
     I: I2c,
@@ -136,38 +137,36 @@ where
         }
     }
 
-    fn execute_command(
-        &mut self,
-        command: Command,
-    ) -> Result<(), I::Error> {
+    fn execute_command(&mut self, command: Command) -> Result<(), I::Error> {
         self.device.write(self.address as u8, &command.code())?;
         Ok(())
     }
 
-    pub fn measure(&mut self) -> Result<Measurement, I::Error> {
+    pub fn measure(&mut self) -> Result<Measurement, Sht32dError<I::Error>> {
         let repeatability = Repeatability::High;
-        self.execute_command(Command::SingleFetch(
-            ClockStretch::Enabled,
-            repeatability,
-        ))?;
+        self.execute_command(Command::SingleFetch(ClockStretch::Enabled, repeatability))?;
         let mut buffer = [0; 6];
         sleep(repeatability.delay());
         self.device.read(self.address as u8, &mut buffer)?;
-        let (temp_crc, humidity_crc) = buffer.split_at(3);
-        let temp_checksum = self.crc.checksum(&[temp_crc[0], temp_crc[1]]);
-        if temp_crc[2] != temp_checksum {
-
+        let (temp_with_crc, humidity_with_crc) = buffer.split_at(3);
+        if temp_with_crc[2] != self.crc.checksum(&[temp_with_crc[0], temp_with_crc[1]]) {
+            return Err(Sht32dError::InvalidChecksum);
         }
-        let humidity_checksum = self.crc.checksum(&[humidity_crc[0], humidity_crc[1]]);
-        if humidity_crc[2] != humidity_checksum {
-            return Ok((0., 0.)); // todo: make error
+        if humidity_with_crc[2]
+            != self
+                .crc
+                .checksum(&[humidity_with_crc[0], humidity_with_crc[1]])
+        {
+            return Err(Sht32dError::InvalidChecksum);
         }
-        let temp = u16::from_be_bytes([temp_crc[0], temp_crc[1]]);
-        let humidity = u16::from_be_bytes([temp_crc[0], temp_crc[1]]);
+        let raw_temp: f64 = u16::from_be_bytes([temp_with_crc[0], temp_with_crc[1]]).into();
+        let raw_humidity: f64 = u16::from_be_bytes([temp_with_crc[0], temp_with_crc[1]]).into();
+        let temperature = -45. + (175. * (raw_temp / (u16::MAX as f64)));
+        let humidity = (100. * raw_humidity) / (u16::MAX as f64);
 
-        Ok((
-            -45. + (175. * (temp as f64 / 65535. /*  2^16 - 1 */)),
-            (100 * humidity) / (u16::max() - 1) /* 2^16 - 1 */,
-        ))
+        Ok(Measurement {
+            temperature,
+            humidity,
+        })
     }
 }
