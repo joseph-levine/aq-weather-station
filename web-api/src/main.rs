@@ -16,7 +16,7 @@ use std::io::{Error as IoError, ErrorKind, Result as IoResult};
 async fn readings(pool: Data<SqlitePool>) -> actix_web::Result<impl Responder> {
     let res = query_as!(
         Reading,
-        "select epoch_timestamp, temperature_c, pressure_mbar, humidity_pct, pm_25_ug_cubic_m from reading order by epoch_timestamp desc limit 100"
+        "select * from reading order by epoch_timestamp desc limit 100"
     )
     .fetch_all(pool.get_ref())
     .await;

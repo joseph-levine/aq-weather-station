@@ -77,9 +77,19 @@ const BREAKPOINTS: [Breakpoint; 6] = [
 pub struct Reading {
     pub epoch_timestamp: i64,
     pub temperature_c: f64,
-    pub pressure_mbar: f64,
     pub humidity_pct: f64,
-    pub pm_25_ug_cubic_m: f64,
+    pub pm10_standard: i64,
+    pub pm25_standard: i64,
+    pub pm100_standard: i64,
+    pub pm10_env: i64,
+    pub pm25_env: i64,
+    pub pm100_env: i64,
+    pub particles_03um: i64,
+    pub particles_05um: i64,
+    pub particles_10um: i64,
+    pub particles_25um: i64,
+    pub particles_50um: i64,
+    pub particles_100um: i64,
 }
 
 #[derive(Serialize, Debug)]
@@ -87,8 +97,6 @@ pub struct WebReading {
     pub utc_datetime: UtcDateTime,
     pub temperature_c: f64,
     pub temperature_f: f64,
-    pub pressure_mbar: f64,
-    pub pressure_in: f64,
     pub humidity_pct: f64,
     pub pm_25_ug_cubic_m: f64,
     pub aqi: u32,
@@ -100,15 +108,13 @@ impl TryInto<WebReading> for Reading {
     type Error = ReadingToWebError;
 
     fn try_into(self) -> Result<WebReading, Self::Error> {
-        let (aqi, aqi_name, aqi_color) = aqi(self.pm_25_ug_cubic_m)?;
+        let (aqi, aqi_name, aqi_color) = aqi(self.particles_25um as f64)?;
         Ok(WebReading {
             utc_datetime: UtcDateTime::from_unix_timestamp(self.epoch_timestamp)?,
             temperature_c: self.temperature_c,
             temperature_f: self.temperature_c * 1.8 + 32.,
-            pressure_mbar: self.pressure_mbar,
-            pressure_in: (100. * self.pressure_mbar / 33.7685).round() / 100.,
             humidity_pct: self.humidity_pct,
-            pm_25_ug_cubic_m: self.pm_25_ug_cubic_m,
+            pm_25_ug_cubic_m: self.particles_25um as f64,
             aqi,
             aqi_name,
             aqi_color,

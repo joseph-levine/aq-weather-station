@@ -1,4 +1,4 @@
-use embedded_hal_async::{i2c, i2c::I2c};
+use embedded_hal::{i2c, i2c::I2c};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -46,9 +46,12 @@ impl<I> Pmsa003i<I>
 where
     I: I2c,
 {
-    pub async fn measure(&mut self) -> Result<Measurement, Pmsa003iError<I::Error>> {
+    pub fn new(i2c: I) -> Pmsa003i<I> {
+        Pmsa003i { i2c }
+    }
+    pub fn measure(&mut self) -> Result<Measurement, Pmsa003iError<I::Error>> {
         let mut buffer = [0; 32];
-        self.i2c.read(ADDRESS, &mut buffer).await?;
+        self.i2c.read(ADDRESS, &mut buffer)?;
         let (_, aligned, _) = unsafe { buffer.align_to::<u16>() };
         if aligned.len() != 16 {
             return Err(Pmsa003iError::Unaligned);

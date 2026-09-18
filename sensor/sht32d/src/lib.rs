@@ -1,5 +1,5 @@
 use crc::{CRC_8_NRSC_5, Crc};
-use embedded_hal_async::{i2c, i2c::I2c};
+use embedded_hal::{i2c, i2c::I2c};
 use std::thread::sleep;
 use std::time::Duration;
 use thiserror::Error;
@@ -137,17 +137,17 @@ where
         }
     }
 
-    async fn execute_command(&mut self, command: Command) -> Result<(), I::Error> {
-        self.device.write(self.address as u8, &command.code()).await?;
+    fn execute_command(&mut self, command: Command) -> Result<(), I::Error> {
+        self.device.write(self.address as u8, &command.code())?;
         Ok(())
     }
 
-    pub async fn measure(&mut self) -> Result<Measurement, Sht32dError<I::Error>> {
+    pub fn measure(&mut self) -> Result<Measurement, Sht32dError<I::Error>> {
         let repeatability = Repeatability::High;
-        self.execute_command(Command::SingleFetch(ClockStretch::Enabled, repeatability)).await?;
+        self.execute_command(Command::SingleFetch(ClockStretch::Enabled, repeatability))?;
         let mut buffer = [0; 6];
         sleep(repeatability.delay());
-        self.device.read(self.address as u8, &mut buffer).await?;
+        self.device.read(self.address as u8, &mut buffer)?;
         let (temp_with_crc, humidity_with_crc) = buffer.split_at(3);
         if temp_with_crc[2] != self.crc.checksum(&[temp_with_crc[0], temp_with_crc[1]]) {
             return Err(Sht32dError::InvalidChecksum);
