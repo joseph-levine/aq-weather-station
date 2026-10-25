@@ -1,15 +1,16 @@
 [package]
-name = "aq-sensor"
+name = "aq-weather-station-sensors"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+aq-weather-station-db = { path = "../db" }
+bme280 = { version = "0.5.1" }
 env_logger = { version = "0.11.11" }
 log = { version = "0.4.34" }
-thiserror = { version = "2.0.20" }
-tokio = { version = "1.53.1", features = ["full"] }
-sqlx = { version = "0.9.0", features = ["sqlite", "runtime-tokio"] }
-rpi-pal = { version = "0.22.3", features = ["hal"]}
 pmsa003i = { version = "*", path = "pmsa003i" }
+rpi-pal = { version = "0.22.3", features = ["hal"] }
 sht32d = { version = "*", path = "sht32d" }
-time = { version = "0.3.55" }
+thiserror = { version = "2.0.20" }
+jiff = { version = "^0.2.38" }
+tokio = { version = "1.53.1", features = ["full"] }

@@ -1,4 +1,6 @@
+use byteorder::{BigEndian, ReadBytesExt};
 use embedded_hal::{i2c, i2c::I2c};
+use std::io::Cursor;
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -24,7 +26,6 @@ where
 {
     #[error(transparent)]
     I2cError(#[from] E),
-
     #[error("Header error")]
     HeaderError,
     #[error("Checksum error")]
@@ -52,13 +53,66 @@ where
     pub fn measure(&mut self) -> Result<Measurement, Pmsa003iError<I::Error>> {
         let mut buffer = [0; 32];
         self.i2c.read(ADDRESS, &mut buffer)?;
-        let (_, aligned, _) = unsafe { buffer.align_to::<u16>() };
-        if aligned.len() != 16 {
-            return Err(Pmsa003iError::Unaligned);
+        let mut rdr = Cursor::new(buffer);
+        let header = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let frame_length = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let pm10_standard = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let pm25_standard = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let pm100_standard = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let pm10_env = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let pm25_env = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let pm100_env = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let particles_03um = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let particles_05um = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let particles_10um = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let particles_25um = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let particles_50um = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let particles_100um = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        let _version = rdr.read_u8().map_err(|_| Pmsa003iError::Unaligned)?;
+        let _error_code = rdr.read_u8().map_err(|_| Pmsa003iError::Unaligned)?;
+        let given_checksum = rdr
+            .read_u16::<BigEndian>()
+            .map_err(|_| Pmsa003iError::Unaligned)?;
+        if header != 0x424d {
+            return Err(Pmsa003iError::HeaderError);
         }
-        let [
-            header,
-            frame_length,
+        if frame_length != 28 {
+            return Err(Pmsa003iError::HeaderError);
+        }
+        let calculated_checksum: u16 = buffer[0..30].iter().copied().map(u16::from).sum();
+        if calculated_checksum != given_checksum {
+            return Err(Pmsa003iError::ChecksumError);
+        }
+
+        Ok(Measurement {
             pm10_standard,
             pm25_standard,
             pm100_standard,
@@ -71,39 +125,6 @@ where
             particles_25um,
             particles_50um,
             particles_100um,
-            _, // version and buffer, which are u8s
-            given_checksum,
-        ] = aligned
-        else {
-            return Err(Pmsa003iError::Unaligned);
-        };
-        let _version = buffer[28];
-        let _error_code = buffer[29];
-
-        if *header != 0x424d {
-            return Err(Pmsa003iError::HeaderError);
-        }
-        if *frame_length != 28 {
-            return Err(Pmsa003iError::HeaderError);
-        }
-        let calculated_checksum: u16 = buffer[0..30].iter().copied().map(u16::from).sum();
-        if calculated_checksum != *given_checksum {
-            return Err(Pmsa003iError::ChecksumError);
-        }
-
-        Ok(Measurement {
-            pm10_standard: *pm10_standard,
-            pm25_standard: *pm25_standard,
-            pm100_standard: *pm100_standard,
-            pm10_env: *pm10_env,
-            pm25_env: *pm25_env,
-            pm100_env: *pm100_env,
-            particles_03um: *particles_03um,
-            particles_05um: *particles_05um,
-            particles_10um: *particles_10um,
-            particles_25um: *particles_25um,
-            particles_50um: *particles_50um,
-            particles_100um: *particles_100um,
         })
     }
 }

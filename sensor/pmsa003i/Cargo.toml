@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-embedded-hal = { version = "1.0.0" }
-thiserror = { version = "2.0.20" }
+byteorder = { version = "1.5.0" }
+embedded-hal = { version = "^1.0.0" }
+thiserror = { version = "^2.0.21" }
